@@ -23,11 +23,6 @@ class Settings(BaseSettings):
     MANAGER_IDS: List[int] = Field(default_factory=list)
     MANAGER_GROUP_ID: int = 0
 
-    # ── Geo ──────────────────────────────────────────────────
-    GEO_PROVIDER: str = "2gis"
-    TWOGIS_API_KEY: str = ""
-    YANDEX_MAPS_API_KEY: str = ""
-
     # ── Delivery zone ─────────────────────────────────────────
     DELIVERY_CENTER_LAT: float = 43.1155
     DELIVERY_CENTER_LON: float = 131.8855

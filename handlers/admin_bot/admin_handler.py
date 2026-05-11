@@ -225,7 +225,7 @@ async def process_branch_address(message: Message, state: FSMContext) -> None:
     await state.set_state(BranchManagement.adding_lat)
     await message.answer(
         "Введите *широту* (latitude), например: `43.200300`\n"
-        "Можно получить на maps.google.com или 2gis.com",
+        "Можно получить на maps.google.com или yandex.ru/maps",
         parse_mode="Markdown",
     )
 

@@ -63,8 +63,8 @@ class OrderRouter:
         if not branches:
             return None, point, "Нет активных филиалов"
 
-        # 4. Get driving times to all active branches in parallel
-        candidates = await self._build_candidates(point, branches)
+        # 4. Get driving times to all active branches via OSRM Table API (one request)
+        candidates = await self._build_candidates_batch(point, branches)
 
         if not candidates:
             return None, point, "Не удалось рассчитать маршруты до филиалов"
@@ -81,26 +81,36 @@ class OrderRouter:
         )
         return best.branch, point, None
 
-    async def _build_candidates(
+    async def _build_candidates_batch(
         self, point: GeoPoint, branches: List[Branch]
     ) -> List[BranchCandidate]:
-        tasks = [self._candidate_for(point, branch) for branch in branches]
-        return await asyncio.gather(*tasks)
+        """
+        Use OSRM Table API to calculate all branch→destination times
+        in a single HTTP request instead of N sequential requests.
+        Falls back to Haversine estimate if the batch call fails.
+        """
+        origins = [GeoPoint(lat=b.lat, lon=b.lon) for b in branches]
+        routes = await geo_service.get_driving_times_batch(
+            destination=point, origins=origins
+        )
 
-    async def _candidate_for(self, point: GeoPoint, branch: Branch) -> BranchCandidate:
-        branch_point = GeoPoint(lat=branch.lat, lon=branch.lon)
-        straight_km = geo_service._haversine(point.lat, point.lon, branch.lat, branch.lon)
-        route = await geo_service.get_driving_time(branch_point, point)
-        if route is None:
-            # Fallback: estimate 30 km/h average in city
-            estimated_min = int(straight_km / 30 * 60)
-            from routing.geo_service import RouteResult
-            route = RouteResult(
-                duration_minutes=estimated_min,
-                distance_km=straight_km,
-                provider="estimate",
+        candidates: List[BranchCandidate] = []
+        for branch, route in zip(branches, routes):
+            straight_km = geo_service._haversine(
+                point.lat, point.lon, branch.lat, branch.lon
             )
-        return BranchCandidate(branch=branch, route=route, straight_km=straight_km)
+            if route is None:
+                # Haversine fallback: 30 km/h city average
+                from routing.geo_service import RouteResult
+                route = RouteResult(
+                    duration_minutes=max(1, int(straight_km / 30 * 60)),
+                    distance_km=round(straight_km, 1),
+                    provider="estimate",
+                )
+            candidates.append(
+                BranchCandidate(branch=branch, route=route, straight_km=straight_km)
+            )
+        return candidates
 
     async def find_pickup_branch(self, branch_name: str) -> Optional[Branch]:
         """Find an active branch whose name matches the pickup location string."""
