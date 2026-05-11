@@ -50,7 +50,11 @@ class OrderHandler:
                 }
             )
 
-        logger.info("OrderHandler registered for {} source groups", len(settings.ORDER_SOURCE_GROUPS))
+        logger.info(
+            "OrderHandler registered for {} source groups: {}",
+            len(settings.ORDER_SOURCE_GROUPS),
+            settings.ORDER_SOURCE_GROUPS,
+        )
 
     async def start_workers(self) -> None:
         for i in range(settings.ORDER_PROCESSING_WORKERS):

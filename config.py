@@ -1,26 +1,48 @@
 from __future__ import annotations
 
-from typing import List
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+import json
+from typing import Any, List
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_int_list(raw: Any) -> List[int]:
+    """
+    Parse a comma-separated string or JSON array into List[int].
+    Handles: "123", "123,456", "[123,456]", int, list.
+    """
+    if isinstance(raw, list):
+        return [int(x) for x in raw]
+    if isinstance(raw, int):
+        return [raw]
+    if not isinstance(raw, str):
+        return []
+    raw = raw.strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        return json.loads(raw)
+    return [int(x.strip()) for x in raw.split(",") if x.strip()]
 
 
 class Settings(BaseSettings):
-    # ── Userbot ──────────────────────────────────────────────
+    # ── Userbot ───────────────────────────────────────────────
     TELEGRAM_API_ID: int
     TELEGRAM_API_HASH: str
     TELEGRAM_PHONE: str
     TELEGRAM_SESSION_NAME: str = "ragazzi_userbot"
 
-    # ── Admin Bot ────────────────────────────────────────────
+    # ── Admin Bot ─────────────────────────────────────────────
     TELEGRAM_BOT_TOKEN: str
 
-    # ── Source groups ────────────────────────────────────────
-    ORDER_SOURCE_GROUPS: List[int] = Field(default_factory=list)
-
-    # ── Roles ────────────────────────────────────────────────
-    ADMIN_IDS: List[int] = Field(default_factory=list)
-    MANAGER_IDS: List[int] = Field(default_factory=list)
+    # ── Source groups / roles ─────────────────────────────────
+    # Declared as str to prevent pydantic-settings from JSON-pre-parsing
+    # list fields (it calls json.loads internally for List[T] fields,
+    # which crashes on comma-separated values like "-100x,-100y").
+    # model_post_init converts them to List[int] after loading.
+    ORDER_SOURCE_GROUPS: str = Field(default="")
+    ADMIN_IDS: str = Field(default="")
+    MANAGER_IDS: str = Field(default="")
     MANAGER_GROUP_ID: int = 0
 
     # ── Delivery zone ─────────────────────────────────────────
@@ -28,32 +50,27 @@ class Settings(BaseSettings):
     DELIVERY_CENTER_LON: float = 131.8855
     DELIVERY_MAX_RADIUS_KM: float = 50.0
 
-    # ── Database ─────────────────────────────────────────────
+    # ── Database ──────────────────────────────────────────────
     DATABASE_URL: str = "sqlite+aiosqlite:///./ragazzi.db"
 
-    # ── Processing ───────────────────────────────────────────
+    # ── Processing ────────────────────────────────────────────
     DUPLICATE_WINDOW_MINUTES: int = 60
     ORDER_PROCESSING_WORKERS: int = 3
 
-    # ── Logging ──────────────────────────────────────────────
+    # ── Logging ───────────────────────────────────────────────
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/ragazzi.log"
 
-    @field_validator("ORDER_SOURCE_GROUPS", "ADMIN_IDS", "MANAGER_IDS", mode="before")
-    @classmethod
-    def parse_int_list(cls, v: object) -> List[int]:
-        if isinstance(v, list):
-            return [int(x) for x in v]
-        if isinstance(v, str):
-            v = v.strip()
-            if not v:
-                return []
-            return [int(x.strip()) for x in v.split(",") if x.strip()]
-        return []
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    def model_post_init(self, __context: Any) -> None:
+        """Convert str list-fields to List[int] after env loading."""
+        object.__setattr__(self, "ORDER_SOURCE_GROUPS", _parse_int_list(self.ORDER_SOURCE_GROUPS))
+        object.__setattr__(self, "ADMIN_IDS", _parse_int_list(self.ADMIN_IDS))
+        object.__setattr__(self, "MANAGER_IDS", _parse_int_list(self.MANAGER_IDS))
 
 
 settings = Settings()
